@@ -44,7 +44,7 @@ pipeline {
                 script {
                     try {
                         sh 'docker compose up -d'
-                        sleep 10
+                        sleep 5
                         sh 'docker compose logs app'
                     } finally {
                         sh 'docker compose down --volumes'
