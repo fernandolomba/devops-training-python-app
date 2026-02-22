@@ -1,27 +1,12 @@
 pipeline {
     agent any
-
     stages {
         stage('Build CI Image') {
             steps {
-                // Construimos la imagen con make disponible
+                // Instalamos pip, flake8, mypy, black, pytest, etc.
                 sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
             }
         }
-
-        stage('Install Dependencies') {
-            agent {
-                docker {
-                    image 'mi-app-ci'
-                    reuseNode true
-                }
-            }
-            steps {
-                // Instalamos TODO lo que el Makefile necesita (incluyendo linters y test tools)
-                sh 'pip install -r requirements.txt flake8 mypy black coverage pytest'
-            }
-        }
-
         stage('Lint') {
             agent {
                 docker {
@@ -30,11 +15,9 @@ pipeline {
                 }
             }
             steps {
-                // Ahora ENV_PREFIX estará vacío y ejecutará "flake8 src/", etc.
                 sh 'make lint'
             }
         }
-
         stage('Test') {
             agent {
                 docker {
@@ -43,7 +26,6 @@ pipeline {
                 }
             }
             steps {
-                // Ejecuta los tests a través del Makefile
                 sh 'make test'
             }
         }
