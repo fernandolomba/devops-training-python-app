@@ -1,32 +1,33 @@
+def runInDocker(String image, Closure body) {
+    docker.image(image).inside {
+        body()
+    }
+}
+
 pipeline {
     agent any
     stages {
         stage('Build CI Image') {
             steps {
-                // Instalamos pip, flake8, mypy, black, pytest, etc.
                 sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
             }
         }
         stage('Lint') {
-            agent {
-                docker {
-                    image 'mi-app-ci'
-                    reuseNode true
-                }
-            }
             steps {
-                sh 'make lint'
+                script {
+                    runInDocker('mi-app-ci') {
+                        sh 'make lint'
+                    }
+                }
             }
         }
         stage('Test') {
-            agent {
-                docker {
-                    image 'mi-app-ci'
-                    reuseNode true
-                }
-            }
             steps {
-                sh 'make test'
+                script {
+                    runInDocker('mi-app-ci') {
+                        sh 'make test'
+                    }
+                }
             }
         }
     }
