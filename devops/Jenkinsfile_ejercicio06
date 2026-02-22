@@ -1,0 +1,56 @@
+def runInDocker(String image, Closure body) {
+    docker.image(image).inside {
+        body()
+    }
+}
+
+def appImage
+
+pipeline {
+    agent any
+    stages {
+        stage('Build CI Image') {
+            steps {
+                sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
+            }
+        }
+        stage('Lint') {
+            steps {
+                script {
+                    runInDocker('mi-app-ci') {
+                        sh 'make lint'
+                    }
+                }
+            }
+        }
+        stage('Test') {
+            steps {
+                script {
+                    runInDocker('mi-app-ci') {
+                        sh 'make test'
+                    }
+                }
+            }
+        }
+        stage('Build Image') {
+            steps {
+                script {
+                    appImage = docker.build('mi-app', '-f devops/Dockerfile .')
+                }
+            }
+        }
+        stage('CD') {
+            steps {
+                script {
+                    try {
+                        sh 'docker compose up -d'
+                        sleep 10
+                        sh 'docker compose logs app'
+                    } finally {
+                        sh 'docker compose down --volumes'
+                    }
+                }
+            }
+        }
+    }
+}
