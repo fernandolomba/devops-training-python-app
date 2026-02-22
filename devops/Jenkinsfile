@@ -1,53 +1,51 @@
 pipeline {
     agent any
-    
+
     stages {
-        stage('Construimos la imagen') {
+        stage('Build CI Image') {
             steps {
-                // Construimos la imagen usando el Dockerfile
-                sh 'docker build -t mi-ci-image -f devops/ci.Dockerfile .'
+                // Construimos la imagen con make disponible
+                sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
             }
         }
-    
-        stage('Instalar Dependencias') {
+
+        stage('Install Dependencies') {
             agent {
                 docker {
-                    image 'mi-ci-image'
-                    // Necesitamos usar el mismo nodo porque si lo vuelve a crear más adelante y faltarian las dependencias
-                    reuseNode true 
+                    image 'mi-app-ci'
+                    reuseNode true
                 }
             }
             steps {
-                // Instalamos las dependencias
-                sh 'pip install -r requirements.txt flake8 mypy'
+                // Instalamos TODO lo que el Makefile necesita (incluyendo linters y test tools)
+                sh 'pip install -r requirements.txt flake8 mypy black coverage pytest'
             }
         }
-    
+
         stage('Lint') {
             agent {
                 docker {
-                    image 'mi-ci-image'
+                    image 'mi-app-ci'
                     reuseNode true
                 }
             }
             steps {
-                // Ejecuta el linting
+                // Ahora ENV_PREFIX estará vacío y ejecutará "flake8 src/", etc.
                 sh 'make lint'
             }
         }
-    
+
         stage('Test') {
             agent {
                 docker {
-                    image 'mi-ci-image'
+                    image 'mi-app-ci'
                     reuseNode true
                 }
             }
             steps {
-                // Tests unitarios
-                sh 'pytest -q'
+                // Ejecuta los tests a través del Makefile
+                sh 'make test'
             }
         }
     }
-
 }
