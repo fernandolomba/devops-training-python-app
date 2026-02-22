@@ -1,0 +1,45 @@
+def runInDocker(String image, Closure body) {
+    docker.image(image).inside {
+        body()
+    }
+}
+
+// Hay que declararlo aquí para que sea accesible desde todos los stages
+def appImage  // Variable accesible por todos los stages
+
+pipeline {
+    agent any
+    stages {
+        stage('Build CI Image') {
+            steps {
+                sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
+            }
+        }
+        stage('Lint') {
+            steps {
+                script {
+                    runInDocker('mi-app-ci') {
+                        sh 'make lint'
+                    }
+                }
+            }
+        }
+        stage('Test') {
+            steps {
+                script {
+                    runInDocker('mi-app-ci') {
+                        sh 'make test'
+                    }
+                }
+            }
+        }
+        stage('Build Image') {
+            steps {
+                script {
+                    appImage = docker.build('mi-app', '-f devops/Dockerfile .')
+                }
+            }
+        }
+      
+    }
+}
