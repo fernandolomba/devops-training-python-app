@@ -1,4 +1,4 @@
 Jenkinsfile-solution
 gitlab-ci-solution.yml
 workflow-solution.yml
-.venv/.venv/
+.venv/
