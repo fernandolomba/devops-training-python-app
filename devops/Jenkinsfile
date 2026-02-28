@@ -15,9 +15,11 @@ pipeline {
     }
 
     stages {
-        stage('Build CI Image') {
+        stage('Build Image') {
             steps {
-                sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
+                script {
+                    appImage = docker.build('mi-app', '-f Dockerfile .')
+                }
             }
         }
         stage('Lint') {
