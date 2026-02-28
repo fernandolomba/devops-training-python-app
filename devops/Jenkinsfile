@@ -55,23 +55,26 @@ pipeline {
             }
             steps {
                 script {
-                    echo "Limpieza y despliegue: branch=${env.BRANCH_NAME}"
+                    // --- Lógica del Ejercicio 6.2 ---
+                    env.DEPLOY_ENV = (env.BRANCH_NAME == 'master') ? 'PRO' : 'DEV'
+                    echo "Deploying to ${env.DEPLOY_ENV}"
+                    
+                    // Definimos el nombre del proyecto según el entorno
+                    def projectName = env.DEPLOY_ENV.toLowerCase()
+                    
                     try {
-                        // Borrado  de los contenedores conflictivos por nombre
-                        // Usamos || true para que si el contenedor no existe, el pipeline no falle
-                        sh 'docker rm -f my-flask-app-db my-flask-app-dc || true'
+                        echo "Iniciando despliegue en entorno: ${env.DEPLOY_ENV}"
                         
-                        // Limpieza normal de compose
-                        sh 'docker compose down --volumes --remove-orphans'
-                        
-                        // Levantar el entorno
-                        sh 'docker compose up -d'
+                        // Usamos -p para crear proyectos aislados (dev o pro)
+                        sh "docker compose -p ${projectName} down --volumes --remove-orphans"
+                        sh "docker compose -p ${projectName} up -d"
                         
                         sleep 5
-                        sh 'docker compose logs app'
+                        sh "docker compose -p ${projectName} logs app"
+                        
                     } finally {
-                        // Opcional: limpiar al final
-                        sh 'docker compose down --volumes --remove-orphans'
+                        // Limpieza del proyecto específico
+                        sh "docker compose -p ${projectName} down --volumes --remove-orphans"
                     }
                 }
             }
