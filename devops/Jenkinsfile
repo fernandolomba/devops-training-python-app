@@ -8,15 +8,18 @@ def appImage
 
 pipeline {
     agent any
+    
+    // Definimos los parámetros
+    parameters {
+        booleanParam(name: 'RUN_CD', defaultValue: false, description: '¿Ejecutar despliegue CD?')
+    }
 
     stages {
         stage('Build CI Image') {
             steps {
-                // Esta es la imagen con herramientas (make, linters, etc.)
                 sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
             }
         }
-
         stage('Lint') {
             steps {
                 script {
@@ -26,7 +29,6 @@ pipeline {
                 }
             }
         }
-
         stage('Test') {
             steps {
                 script {
@@ -36,27 +38,26 @@ pipeline {
                 }
             }
         }
-
-        stage('Build Production Image') {
+        stage('Build Image') {
             steps {
                 script {
-                    // Importante: El nombre debe coincidir con el de tu docker-compose.yml
-                    // para evitar el error "pull access denied"
-                    appImage = docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f Dockerfile .")
+                    appImage = docker.build('mi-app', '-f Dockerfile .')
                 }
             }
         }
         
+        // --- STAGE CD MODIFICADO ---
         stage('CD') {
             when {
                 anyOf {
+                    expression { return params.RUN_CD == true }
                     branch 'develop'
                     branch 'master'
                 }
             }
             steps {
                 script {
-                    echo "Desplegando rama: ${env.BRANCH_NAME}"
+                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
                     try {
                         sh 'docker compose up -d'
                         sleep 5
