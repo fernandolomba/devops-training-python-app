@@ -1,0 +1,83 @@
+def runInDocker(String image, Closure body) {
+    docker.image(image).inside {
+        body()
+    }
+}
+
+def appImage
+
+pipeline {
+    agent any
+    
+    parameters {
+        booleanParam(name: 'RUN_CD', defaultValue: false, description: '¿Ejecutar despliegue CD?')
+    }
+
+    stages {
+        stage('Build CI Image') {
+            steps {
+                sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
+            }
+        }
+        stage('Lint') {
+            steps {
+                script {
+                    runInDocker('mi-app-ci') {
+                        sh 'make lint'
+                    }
+                }
+            }
+        }
+        stage('Test') {
+            steps {
+                script {
+                    runInDocker('mi-app-ci') {
+                        sh 'make test'
+                    }
+                }
+            }
+        }
+        stage('Build Production Image') {
+            steps {
+                script {
+                    appImage = docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f Dockerfile .")
+                }
+            }
+        }
+        
+        stage('CD') {
+            when {
+                anyOf {
+                    expression { return params.RUN_CD == true }
+                    branch 'develop'
+                    branch 'master'
+                }
+            }
+            steps {
+                script {
+                    // --- Lógica del Ejercicio 6.2 ---
+                    env.DEPLOY_ENV = (env.BRANCH_NAME == 'master') ? 'PRO' : 'DEV'
+                    echo "Deploying to ${env.DEPLOY_ENV}"
+                    
+                    // Definimos el nombre del proyecto según el entorno (Extra opcional)
+                    def projectName = env.DEPLOY_ENV.toLowerCase()
+                    
+                    try {
+                        echo "Iniciando despliegue en entorno: ${env.DEPLOY_ENV}"
+                        
+                        // Usamos -p para crear proyectos aislados (dev o pro)
+                        sh "docker compose -p ${projectName} down --volumes --remove-orphans"
+                        sh "docker compose -p ${projectName} up -d"
+                        
+                        sleep 5
+                        sh "docker compose -p ${projectName} logs app"
+                        
+                    } finally {
+                        // Limpieza del proyecto específico
+                        sh "docker compose -p ${projectName} down --volumes --remove-orphans"
+                    }
+                }
+            }
+        }
+    }
+}
