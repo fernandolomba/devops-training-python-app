@@ -1,32 +1,58 @@
+/**
+ * Pipeline de CI/CD para apllicaciones Python Flask.
+ * Incluye etapas de construcción de imágenes de CI, análisis de código (Lint),
+ * pruebas unitarias, construcción de imagen de producción y despliegue simulado.
+ */
+
 def runInDocker(String image, Closure body) {
+    /**
+     * Función auxiliar para ejecutar bloques de código dentro de un contenedor Docker.
+     * @param image Nombre de la imagen Docker a utilizar como entorno.
+     * @param body Bloque de comandos (Closure) a ejecutar.
+     */
     docker.image(image).inside {
         body()
     }
 }
 
-def appImage
+def appImage // Variable global para referenciar la imagen de producción construida
 
 pipeline {
     agent any
 
+    // Definición de variables de entorno globales para el pipeline
     environment {
-        // Usamos el número de build para que la imagen sea única
+        // Genera un tag único por cada ejecución usando el número de build de Jenkins
         IMAGE_NAME = "contrerasadr/devops-training-python-app:${env.BUILD_NUMBER}"
+        // URL base de la aplicación para propósitos de logging
         APP_URL    = "http://localhost:5001/"
     }
     
+    // Parámetros de entrada para ejecuciones manuales
     parameters {
-        booleanParam(name: 'RUN_CD', defaultValue: false, description: 'Ejecutar CD manualmente')
+        booleanParam(
+            name: 'RUN_CD', 
+            defaultValue: false, 
+            description: 'Permite forzar el despliegue (CD) en cualquier rama si se activa.'
+        )
     }
 
     stages {
         stage('Build CI Image') {
+            /**
+             * Construye la imagen de Docker que contiene las herramientas de desarrollo
+             * (linters, frameworks de test, make, etc.) necesarias para las etapas de CI.
+             */
             steps {
                 sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
             }
         }
         
         stage('Lint') {
+            /**
+             * Ejecuta el análisis estático de código (Linter) para asegurar la calidad
+             * y el cumplimiento de estándares de estilo.
+             */
             steps {
                 script {
                     runInDocker('mi-app-ci') {
@@ -37,6 +63,9 @@ pipeline {
         }
 
         stage('Test') {
+            /**
+             * Ejecuta la suite de pruebas automatizadas dentro del contenedor de CI.
+             */
             steps {
                 script {
                     runInDocker('mi-app-ci') {
@@ -47,15 +76,23 @@ pipeline {
         }
 
         stage('Build Image') {
+            /**
+             * Construye la imagen de Docker optimizada para producción.
+             * Utiliza el tag generado en el bloque de environment.
+             */
             steps {
                 script {
-                    echo "Construyendo imagen: ${env.IMAGE_NAME}"
+                    echo "Iniciando construcción de imagen de producción: ${env.IMAGE_NAME}"
                     appImage = docker.build("${env.IMAGE_NAME}", "-f Dockerfile .")
                 }
             }
         }
         
         stage('CD') {
+            /**
+             * Etapa de Despliegue Continuo
+             * Se ejecuta automáticamente en 'master' o 'develop', o si el parámetro RUN_CD es true.
+             */
             when {
                 anyOf {
                     expression { return params.RUN_CD }
@@ -65,39 +102,45 @@ pipeline {
             }
             steps {
                 script {
+                    // Lógica de determinación del entorno basada en la rama de Git
                     env.DEPLOY_ENV = (env.BRANCH_NAME == 'master') ? 'PRO' : 'DEV'
                     def projectName = env.DEPLOY_ENV.toLowerCase()
                     
-                    echo "Iniciando despliegue en entorno: ${env.DEPLOY_ENV}"
+                    echo "Desplegando en entorno: ${env.DEPLOY_ENV} (Proyecto Docker: ${projectName})"
                     
-                    // Limpieza de contenedores conflictivos
+                    // Limpieza proactiva de posibles contenedores huérfanos con nombres en conflicto
                     sh "docker rm -f my-flask-app-db my-flask-app-dc || true"
                     
-                    // Levantamos con la imagen específica del build
+                    // Despliegue de servicios definidos en docker-compose.yml
+                    // Se inyecta la variable IMAGE_NAME para que Compose use la versión recién construida
                     withEnv(["IMAGE_NAME=${env.IMAGE_NAME}"]) {
                         sh "docker compose -p ${projectName} up -d"
                     }
                     
-                    sleep 5
-                    echo "Validando despliegue en: ${env.APP_URL}"
+                    // Tiempo de espera para asegurar que los servicios (DB/App) estén listos
+                    sleep 10
+                    echo "Servicio disponible teóricamente en: ${env.APP_URL}"
                 }
             }
-            // Tarea 6.5: Post hooks específicos para el stage CD
+            
             post {
+                /**
+                 * Acciones posteriores específicas para la etapa de despliegue.
+                 */
                 always {
                     script {
                         def projectName = (env.BRANCH_NAME == 'master' ? 'pro' : 'dev')
-                        echo "Limpiando recursos del proyecto: ${projectName}"
+                        echo "Limpieza de recursos de despliegue para proyecto: ${projectName}"
                         sh "docker compose -p ${projectName} down --volumes --remove-orphans || true"
                     }
                 }
                 success {
-                    echo "SUCCESS: El despliegue en ${env.DEPLOY_ENV} se ha completado correctamente."
+                    echo "NOTIFICACIÓN: Despliegue en ${env.DEPLOY_ENV} finalizado con éxito."
                 }
                 failure {
                     script {
                         def projectName = (env.BRANCH_NAME == 'master' ? 'pro' : 'dev')
-                        echo "FAILURE: Error en el despliegue de ${env.DEPLOY_ENV}. Extrayendo logs..."
+                        echo "ERROR: Fallo en el despliegue de ${env.DEPLOY_ENV}. Inspeccionando logs del sistema..."
                         sh "docker compose -p ${projectName} logs || true"
                     }
                 }
@@ -105,11 +148,20 @@ pipeline {
         }
     }
 
-    // Tarea 6.5: Post hook global para limpieza de imágenes 
     post {
+        /**
+         * Acciones globales al finalizar el pipeline completo.
+         */
         always {
-            echo "Finalizando pipeline. Limpiando imágenes temporales..."
+            echo "Finalizando ejecución del pipeline #${env.BUILD_NUMBER}. Liberando espacio en disco..."
+            // Borra la imagen local construida para evitar la saturación del almacenamiento del nodo
             sh "docker rmi ${env.IMAGE_NAME} || true"
+        }
+        success {
+            echo "Pipeline completado exitosamente."
+        }
+        failure {
+            echo "El pipeline ha fallado. Revisar los logs de las etapas anteriores."
         }
     }
 }
