@@ -9,7 +9,6 @@ def appImage
 pipeline {
     agent any
     
-    // Definimos los parámetros
     parameters {
         booleanParam(name: 'RUN_CD', defaultValue: false, description: '¿Ejecutar despliegue CD?')
     }
@@ -38,15 +37,14 @@ pipeline {
                 }
             }
         }
-        stage('Build Image') {
+        stage('Build Production Image') {
             steps {
                 script {
-                    appImage = docker.build('mi-app', '-f Dockerfile .')
+                    appImage = docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f Dockerfile .")
                 }
             }
         }
         
-        // --- STAGE CD MODIFICADO ---
         stage('CD') {
             when {
                 anyOf {
@@ -57,13 +55,23 @@ pipeline {
             }
             steps {
                 script {
-                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
+                    echo "Limpieza y despliegue: branch=${env.BRANCH_NAME}"
                     try {
+                        // Borrado  de los contenedores conflictivos por nombre
+                        // Usamos || true para que si el contenedor no existe, el pipeline no falle
+                        sh 'docker rm -f my-flask-app-db my-flask-app-dc || true'
+                        
+                        // Limpieza normal de compose
+                        sh 'docker compose down --volumes --remove-orphans'
+                        
+                        // Levantar el entorno
                         sh 'docker compose up -d'
+                        
                         sleep 5
                         sh 'docker compose logs app'
                     } finally {
-                        sh 'docker compose down --volumes'
+                        // Opcional: limpiar al final
+                        sh 'docker compose down --volumes --remove-orphans'
                     }
                 }
             }
