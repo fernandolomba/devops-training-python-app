@@ -8,6 +8,11 @@ def appImage
 
 pipeline {
     agent any
+    
+    // Definimos los parámetros
+    parameters {
+        booleanParam(name: 'RUN_CD', defaultValue: false, description: '¿Ejecutar despliegue CD?')
+    }
 
     stages {
         stage('Build CI Image') {
@@ -36,22 +41,23 @@ pipeline {
         stage('Build Image') {
             steps {
                 script {
-                    appImage = docker.build('mi-app', '-f devops/Dockerfile .')
+                    appImage = docker.build('mi-app', '-f Dockerfile .')
                 }
             }
         }
-
+        
+        // --- STAGE CD MODIFICADO ---
         stage('CD') {
-            // Se ejecuta si la rama de origen es develop o master
             when {
                 anyOf {
+                    expression { return params.RUN_CD == true }
                     branch 'develop'
                     branch 'master'
                 }
             }
             steps {
                 script {
-                    echo "Ejecutando CD en la rama: ${env.BRANCH_NAME}"
+                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
                     try {
                         sh 'docker compose up -d'
                         sleep 5
