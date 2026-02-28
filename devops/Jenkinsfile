@@ -4,13 +4,16 @@ def runInDocker(String image, Closure body) {
     }
 }
 
-def appImage
-
 pipeline {
     agent any
     
+    // --- Tarea: Definición del parámetro RUN_CD ---
     parameters {
-        booleanParam(name: 'RUN_CD', defaultValue: false, description: '¿Ejecutar despliegue CD?')
+        booleanParam(
+            name: 'RUN_CD', 
+            defaultValue: false, 
+            description: 'Si se marca, ejecutará el stage CD en cualquier rama. Si no, solo en develop/master.'
+        )
     }
 
     stages {
@@ -19,61 +22,53 @@ pipeline {
                 sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
             }
         }
-        stage('Lint') {
+        
+        stage('Lint & Test') {
             steps {
                 script {
                     runInDocker('mi-app-ci') {
                         sh 'make lint'
-                    }
-                }
-            }
-        }
-        stage('Test') {
-            steps {
-                script {
-                    runInDocker('mi-app-ci') {
                         sh 'make test'
                     }
                 }
             }
         }
+
         stage('Build Production Image') {
             steps {
                 script {
-                    appImage = docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f Dockerfile .")
+                    docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f Dockerfile .")
                 }
             }
         }
         
+        // --- Tarea: Stage CD con lógica condicional avanzada ---
         stage('CD') {
             when {
                 anyOf {
-                    expression { return params.RUN_CD == true }
+                    // Condición 1: El usuario activó el check manualmente
+                    expression { return params.RUN_CD } 
+                    
+                    // Condición 2: Estamos en las ramas principales
                     branch 'develop'
                     branch 'master'
                 }
             }
             steps {
                 script {
-                    // --- Lógica del Ejercicio 6.2 ---
+                    // Pintamos el entorno (Ejercicio 6.2) y el estado del parámetro
                     env.DEPLOY_ENV = (env.BRANCH_NAME == 'master') ? 'PRO' : 'DEV'
+                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
                     echo "Deploying to ${env.DEPLOY_ENV}"
                     
-                    // Definimos el nombre del proyecto según el entorno
                     def projectName = env.DEPLOY_ENV.toLowerCase()
                     
                     try {
-                        echo "Iniciando despliegue en entorno: ${env.DEPLOY_ENV}"
-                        
-                        // Usamos -p para crear proyectos aislados (dev o pro)
                         sh "docker compose -p ${projectName} down --volumes --remove-orphans"
                         sh "docker compose -p ${projectName} up -d"
-                        
                         sleep 5
                         sh "docker compose -p ${projectName} logs app"
-                        
                     } finally {
-                        // Limpieza del proyecto específico
                         sh "docker compose -p ${projectName} down --volumes --remove-orphans"
                     }
                 }
