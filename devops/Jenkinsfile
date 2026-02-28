@@ -8,6 +8,7 @@ def appImage
 
 pipeline {
     agent any
+
     stages {
         stage('Build CI Image') {
             steps {
@@ -35,13 +36,22 @@ pipeline {
         stage('Build Image') {
             steps {
                 script {
-                    appImage = docker.build('mi-app', '-f Dockerfile .')
+                    appImage = docker.build('mi-app', '-f devops/Dockerfile .')
                 }
             }
         }
+
         stage('CD') {
+            // Se ejecuta SOLO si la rama actual es develop o master
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'master'
+                }
+            }
             steps {
                 script {
+                    echo "Ejecutando CD en la rama: ${env.BRANCH_NAME}"
                     try {
                         sh 'docker compose up -d'
                         sleep 5
