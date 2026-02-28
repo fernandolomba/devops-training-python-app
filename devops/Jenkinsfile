@@ -42,7 +42,7 @@ pipeline {
                 script {
                     // Importante: El nombre debe coincidir con el de tu docker-compose.yml
                     // para evitar el error "pull access denied"
-                    appImage = docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f devops/Dockerfile .")
+                    appImage = docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f Dockerfile .")
                 }
             }
         }
