@@ -9,7 +9,6 @@ def appImage
 pipeline {
     agent any
     
-    // Definimos los parámetros
     parameters {
         booleanParam(name: 'RUN_CD', defaultValue: false, description: '¿Ejecutar despliegue CD?')
     }
@@ -38,15 +37,14 @@ pipeline {
                 }
             }
         }
-        stage('Build Image') {
+        stage('Build Production Image') {
             steps {
                 script {
-                    appImage = docker.build('mi-app', '-f Dockerfile .')
+                    appImage = docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f Dockerfile .")
                 }
             }
         }
         
-        // --- STAGE CD MODIFICADO ---
         stage('CD') {
             when {
                 anyOf {
@@ -59,11 +57,15 @@ pipeline {
                 script {
                     echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
                     try {
+                        // Limpieza de contenedores huérfanos o con nombres duplicados
+                        sh 'docker compose down --volumes --remove-orphans'
+                        
                         sh 'docker compose up -d'
-                        sleep 5
+                        sleep 10
                         sh 'docker compose logs app'
                     } finally {
-                        sh 'docker compose down --volumes'
+                        // Borra la app al terminar el stage. 
+                        // sh 'docker compose down --volumes --remove-orphans'
                     }
                 }
             }
