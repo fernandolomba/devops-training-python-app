@@ -55,17 +55,23 @@ pipeline {
             }
             steps {
                 script {
-                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
+                    echo "Limpieza y despliegue: branch=${env.BRANCH_NAME}"
                     try {
-                        // Limpieza de contenedores huérfanos o con nombres duplicados
+                        // Borrado  de los contenedores conflictivos por nombre
+                        // Usamos || true para que si el contenedor no existe, el pipeline no falle
+                        sh 'docker rm -f my-flask-app-db my-flask-app-dc || true'
+                        
+                        // Limpieza normal de compose
                         sh 'docker compose down --volumes --remove-orphans'
                         
+                        // Levantar el entorno
                         sh 'docker compose up -d'
-                        sleep 10
+                        
+                        sleep 5
                         sh 'docker compose logs app'
                     } finally {
-                        // Borra la app al terminar el stage. 
-                        // sh 'docker compose down --volumes --remove-orphans'
+                        // Opcional: limpiar al final
+                        sh 'docker compose down --volumes --remove-orphans'
                     }
                 }
             }
