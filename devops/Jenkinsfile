@@ -8,20 +8,15 @@ def appImage
 
 pipeline {
     agent any
-    
-    // Definimos los parámetros
-    parameters {
-        booleanParam(name: 'RUN_CD', defaultValue: false, description: '¿Ejecutar despliegue CD?')
-    }
 
     stages {
-        stage('Build Image') {
+        stage('Build CI Image') {
             steps {
-                script {
-                    appImage = docker.build('mi-app', '-f Dockerfile .')
-                }
+                // Esta es la imagen con herramientas (make, linters, etc.)
+                sh 'docker build -t mi-app-ci -f devops/ci.Dockerfile .'
             }
         }
+
         stage('Lint') {
             steps {
                 script {
@@ -31,6 +26,7 @@ pipeline {
                 }
             }
         }
+
         stage('Test') {
             steps {
                 script {
@@ -40,26 +36,27 @@ pipeline {
                 }
             }
         }
-        stage('Build Image') {
+
+        stage('Build Production Image') {
             steps {
                 script {
-                    appImage = docker.build('mi-app', '-f Dockerfile .')
+                    // Importante: El nombre debe coincidir con el de tu docker-compose.yml
+                    // para evitar el error "pull access denied"
+                    appImage = docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f devops/Dockerfile .")
                 }
             }
         }
         
-        // --- STAGE CD MODIFICADO ---
         stage('CD') {
             when {
                 anyOf {
-                    expression { return params.RUN_CD == true }
                     branch 'develop'
                     branch 'master'
                 }
             }
             steps {
                 script {
-                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
+                    echo "Desplegando rama: ${env.BRANCH_NAME}"
                     try {
                         sh 'docker compose up -d'
                         sleep 5
