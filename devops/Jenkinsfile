@@ -9,8 +9,8 @@ def appImage
 pipeline {
     agent any
 
-    // Tarea 6.4: Definición de variables globales
     environment {
+        // Usamos el número de build para que la imagen sea única
         IMAGE_NAME = "contrerasadr/devops-training-python-app:${env.BUILD_NUMBER}"
         APP_URL    = "http://localhost:5001/"
     }
@@ -50,7 +50,6 @@ pipeline {
             steps {
                 script {
                     echo "Construyendo imagen: ${env.IMAGE_NAME}"
-                    // Usamos la variable de entorno para el tag de la imagen
                     appImage = docker.build("${env.IMAGE_NAME}", "-f Dockerfile .")
                 }
             }
@@ -69,28 +68,48 @@ pipeline {
                     env.DEPLOY_ENV = (env.BRANCH_NAME == 'master') ? 'PRO' : 'DEV'
                     def projectName = env.DEPLOY_ENV.toLowerCase()
                     
-                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
-                    echo "Deploying to ${env.DEPLOY_ENV}"
-                    echo "URL de la App: ${env.APP_URL}"
+                    echo "Iniciando despliegue en entorno: ${env.DEPLOY_ENV}"
                     
-                    try {
-                        // Limpieza para evitar conflictos previos
-                        sh "docker rm -f my-flask-app-db my-flask-app-dc || true"
-                        sh "docker compose -p ${projectName} down --volumes --remove-orphans"
-                        
-                        // Inyectamos la variable IMAGE_NAME para que Compose sepa qué imagen usar
-                        withEnv(["IMAGE_NAME=${env.IMAGE_NAME}"]) {
-                            sh "docker compose -p ${projectName} up -d"
-                        }
-                        
-                        sleep 5
-                        sh "docker compose -p ${projectName} logs app"
-                        
-                    } finally {
-                        sh "docker compose -p ${projectName} down --volumes --remove-orphans"
+                    // Limpieza de contenedores conflictivos
+                    sh "docker rm -f my-flask-app-db my-flask-app-dc || true"
+                    
+                    // Levantamos con la imagen específica del build
+                    withEnv(["IMAGE_NAME=${env.IMAGE_NAME}"]) {
+                        sh "docker compose -p ${projectName} up -d"
+                    }
+                    
+                    sleep 5
+                    echo "Validando despliegue en: ${env.APP_URL}"
+                }
+            }
+            // Tarea 6.5: Post hooks específicos para el stage CD
+            post {
+                always {
+                    script {
+                        def projectName = (env.BRANCH_NAME == 'master' ? 'pro' : 'dev')
+                        echo "Limpiando recursos del proyecto: ${projectName}"
+                        sh "docker compose -p ${projectName} down --volumes --remove-orphans || true"
+                    }
+                }
+                success {
+                    echo "SUCCESS: El despliegue en ${env.DEPLOY_ENV} se ha completado correctamente."
+                }
+                failure {
+                    script {
+                        def projectName = (env.BRANCH_NAME == 'master' ? 'pro' : 'dev')
+                        echo "FAILURE: Error en el despliegue de ${env.DEPLOY_ENV}. Extrayendo logs..."
+                        sh "docker compose -p ${projectName} logs || true"
                     }
                 }
             }
+        }
+    }
+
+    // Tarea 6.5: Post hook global para limpieza de imágenes 
+    post {
+        always {
+            echo "Finalizando pipeline. Limpiando imágenes temporales..."
+            sh "docker rmi ${env.IMAGE_NAME} || true"
         }
     }
 }
