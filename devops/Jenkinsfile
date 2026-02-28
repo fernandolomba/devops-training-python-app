@@ -4,16 +4,19 @@ def runInDocker(String image, Closure body) {
     }
 }
 
+def appImage
+
 pipeline {
     agent any
+
+    // Tarea 6.4: Definición de variables globales
+    environment {
+        IMAGE_NAME = "contrerasadr/devops-training-python-app:${env.BUILD_NUMBER}"
+        APP_URL    = "http://localhost:5001/"
+    }
     
-    // --- Tarea: Definición del parámetro RUN_CD ---
     parameters {
-        booleanParam(
-            name: 'RUN_CD', 
-            defaultValue: false, 
-            description: 'Si se marca, ejecutará el stage CD en cualquier rama. Si no, solo en develop/master.'
-        )
+        booleanParam(name: 'RUN_CD', defaultValue: false, description: 'Ejecutar CD manualmente')
     }
 
     stages {
@@ -23,51 +26,66 @@ pipeline {
             }
         }
         
-        stage('Lint & Test') {
+        stage('Lint') {
             steps {
                 script {
                     runInDocker('mi-app-ci') {
                         sh 'make lint'
+                    }
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                script {
+                    runInDocker('mi-app-ci') {
                         sh 'make test'
                     }
                 }
             }
         }
 
-        stage('Build Production Image') {
+        stage('Build Image') {
             steps {
                 script {
-                    docker.build("contrerasadr/devops-training-python-app:0.0.1", "-f Dockerfile .")
+                    echo "Construyendo imagen: ${env.IMAGE_NAME}"
+                    // Usamos la variable de entorno para el tag de la imagen
+                    appImage = docker.build("${env.IMAGE_NAME}", "-f Dockerfile .")
                 }
             }
         }
         
-        // --- Tarea: Stage CD con lógica condicional avanzada ---
         stage('CD') {
             when {
                 anyOf {
-                    // Condición 1: El usuario activó el check manualmente
-                    expression { return params.RUN_CD } 
-                    
-                    // Condición 2: Estamos en las ramas principales
+                    expression { return params.RUN_CD }
                     branch 'develop'
                     branch 'master'
                 }
             }
             steps {
                 script {
-                    // Pintamos el entorno (Ejercicio 6.2) y el estado del parámetro
                     env.DEPLOY_ENV = (env.BRANCH_NAME == 'master') ? 'PRO' : 'DEV'
-                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
-                    echo "Deploying to ${env.DEPLOY_ENV}"
-                    
                     def projectName = env.DEPLOY_ENV.toLowerCase()
                     
+                    echo "CD habilitado: RUN_CD=${params.RUN_CD}, branch=${env.BRANCH_NAME}"
+                    echo "Deploying to ${env.DEPLOY_ENV}"
+                    echo "URL de la App: ${env.APP_URL}"
+                    
                     try {
+                        // Limpieza para evitar conflictos previos
+                        sh "docker rm -f my-flask-app-db my-flask-app-dc || true"
                         sh "docker compose -p ${projectName} down --volumes --remove-orphans"
-                        sh "docker compose -p ${projectName} up -d"
+                        
+                        // Inyectamos la variable IMAGE_NAME para que Compose sepa qué imagen usar
+                        withEnv(["IMAGE_NAME=${env.IMAGE_NAME}"]) {
+                            sh "docker compose -p ${projectName} up -d"
+                        }
+                        
                         sleep 5
                         sh "docker compose -p ${projectName} logs app"
+                        
                     } finally {
                         sh "docker compose -p ${projectName} down --volumes --remove-orphans"
                     }
